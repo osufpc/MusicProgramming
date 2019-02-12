@@ -3,8 +3,10 @@ module MusicThree where
 import Euterpea
 import Euterpea.Music
 
-import System.Random
-import System.Random.Distributions
+import System.Random               -- for stochastic compositions
+import System.Random.Distributions -- for stochastic compositions
+import Data.MarkovChain            -- for markov chain compositions
+
 
 --------------------- Generative Self-Similar Music  -----------------------------
 -- | a rose tree to represent a self-similar generative melody of simple notes
@@ -148,3 +150,64 @@ randomWalkGauss sig = mkLine2 50 . fmap toAbs2 . flip rands (mkStdGen 42) $ gaus
 
 randomWalkExp :: Float -> Music Pitch
 randomWalkExp lam = mkLine2 50 . fmap (toAbs2 . subtract (1/lam)) . flip rands (mkStdGen 42) $ exponential lam
+
+----------------------- Markov Chain Compositions -------------------------------
+
+-- Instead of creating compositions where each note is independent of the
+-- previous note we can create a markov chain composition so that each prior
+-- note determines future notes based on a conditional probability table
+-- we use the run function from Data.MarkovChain
+
+-- > :t run
+-- > run :: (Ord a, RandomGen g) => Int -> [a] -> Int -> g -> [a]
+
+-- run takes:
+  -- Int -- order of the Markov Chain
+  -- [a] -- training sequence (a circular list)
+  -- Int -- index to start within the training sequence
+  -- g   -- a random number generator
+
+-- there is also a runMulti function, which takes a list of training sequences
+-- and returns a list of lists of results:
+-- > :t runMulti
+-- > runMulti :: (Ord a, RandomGen g) => Int -> [[a]] -> Int -> g -> [[a]]
+
+-- this is nice because we can create training sequences from real music or
+-- wherever and train our compositions on them
+
+-- some training sequences
+ps0 :: [Pitch]
+ps0 = [(C, 4), (D, 4), (E, 4)]
+
+ps1 :: [Pitch]
+ps1 = [(C, 4), (D, 4), (E, 4), (F, 4), (G, 4), (A, 4), (B, 4)]
+
+ps2 :: [Pitch]
+ps2 = [ (C, 4), (E, 8), (G, 4), (E, 4), (F, 4), (A, 4), (G, 4), (E, 4), (C, 4)
+      , (E, 8), (G, 4), (E, 8), (F, 4), (D, 4), (C, 4)
+      ]
+
+-- functions to translate run and runMulti to something playable
+mc ps n = mkLine3 (run n ps 0 (mkStdGen 42))
+mcm pss n = mkLine3 (concat (runMulti n pss 0 (mkStdGen 42)))
+
+mkNote3 :: Pitch -> Music Pitch
+mkNote3 = note tn -- making a tenth note
+
+mkLine3 :: [Pitch] -> Music Pitch
+mkLine3 ps = line (take 64 (fmap mkNote3 ps))
+
+-- now play:
+  -- mc ps0 0 -- this will be a totally random sequence, the 0th order chain
+
+  -- mc ps0 1 -- this will look back a single value, which will create a composition to
+              -- match the training data
+
+  -- mc ps1 1 -- will also sound just liek the training data
+
+  -- mc ps2 1 -- ps2 has more than one occurance of some notes, so this will generate a
+              -- trained composition
+
+  -- mcm [ps0, ps2] 1 and mcm [ps1, ps2] 1
+
+  -- mcm [ps1, reverse ps1] 1
