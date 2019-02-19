@@ -6,6 +6,7 @@ import Euterpea.Music
 import System.Random               -- for stochastic compositions
 import System.Random.Distributions -- for stochastic compositions
 import Data.MarkovChain            -- for markov chain compositions
+import Control.Arrow (second)
 
 
 --------------------- Generative Self-Similar Music  -----------------------------
@@ -21,8 +22,16 @@ selfSim pattern = Cluster (0,0) (fmap mkCluster pattern)
   where mkCluster note =
           Cluster note (fmap (mkCluster . addMult note) pattern)
 
+selfSim' :: [SNote] -> Cluster
+selfSim' pattern = Cluster (0,0) (fmap mkCluster pattern)
+  where mkCluster note =
+          Cluster note (fmap (mkCluster . addMult' note) pattern)
+
 addMult :: SNote -> SNote -> SNote
 addMult (d0, p0) (d1, p1) = (d0 * d1, p0 + p1)
+
+addMult' :: SNote -> SNote -> SNote
+addMult' (d0, p0) (d1, p1) = (min d0 d1, ((p0 + p1) `mod` 12) + (p1 `div` 12))
 
 -- | remove notes from the nth level
 fringe :: Int -> Cluster -> [SNote]
@@ -68,6 +77,7 @@ ttm3 = l1 :=: l2
 m4 :: [SNote]
 m4 = [ (hn, 3), (hn, 8), (hn, 22), (qn, 4), (qn, 7), (qn, 21)
      , (qn,0), (qn,5), (qn,15), (wn,6), (wn,9), (wn,19)]
+
 tm4 = generate m4 3 10 (1/2)
 
 -- | instead of using a music seed value and then playing each note at each
@@ -105,7 +115,7 @@ mkTNote = note en . pitch
 -- question now is how to generate the list of Floats that turns into AbsPitches
 -- that turns in to notes
 mkRandMelody :: [AbsPitch] -> Music Pitch
-mkRandMelody = line . take 32 . fmap mkTNote
+mkRandMelody = line . take 300 . fmap mkTNote
 
 -- a uniform series of notes
 melUni :: Music Pitch
@@ -183,8 +193,8 @@ ps1 :: [Pitch]
 ps1 = [(C, 4), (D, 4), (E, 4), (F, 4), (G, 4), (A, 4), (B, 4)]
 
 ps2 :: [Pitch]
-ps2 = [ (C, 4), (E, 8), (G, 4), (E, 4), (F, 4), (A, 4), (G, 4), (E, 4), (C, 4)
-      , (E, 8), (G, 4), (E, 8), (F, 4), (D, 4), (C, 4)
+ps2 = [ (C, 4), (E, 4), (G, 4), (E, 4), (F, 4), (A, 4), (G, 4), (E, 4), (C, 4)
+      , (E, 4), (G, 4), (E, 4), (F, 4), (D, 4), (C, 4)
       ]
 
 -- functions to translate run and runMulti to something playable
@@ -211,3 +221,33 @@ mkLine3 ps = line (take 64 (fmap mkNote3 ps))
   -- mcm [ps0, ps2] 1 and mcm [ps1, ps2] 1
 
   -- mcm [ps1, reverse ps1] 1
+
+------------------------------ Imperial March -------------------------
+mI :: [SNote]
+-- mI = [ (hn, 3), (hn, 8), (hn, 22), (qn, 4), (qn, 7), (qn, 21)
+--      , (qn,0), (qn,5), (qn,15), (wn,6), (wn,9), (wn,19)]
+mI = fmap (second absPitch) ns
+  where o = 2
+        ns = [ g_
+             , g_
+             , g_
+             , ef_
+             , bf_
+             , g_
+             , ef_
+             , bf_
+             , hg_
+             ]
+        helper = absPitch
+        g_   = (qn, (G, o))
+        hg_   = (hn, (G, o))
+        ef_  = ((3/16), (Ef, o))
+        bf_  = ((1/16), (Bf, o))
+
+generate'' :: [SNote] -> Int -> AbsPitch -> Dur -> Music Pitch
+generate'' pattern level nPitches tempoScale =
+  transpose nPitches $ tempo tempoScale $ simToMusic $
+  fringe level $ selfSim' pattern
+
+-- mkNote :: (Dur, AbsPitch) -> Music Pitch
+-- mkNote (d, ap) = note d (pitch ap)
